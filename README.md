@@ -1,1 +1,1 @@
-# AIpom_SemEval-2024
+# AIpom at SemEval-2024 Task:8
