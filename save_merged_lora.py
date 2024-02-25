@@ -10,13 +10,15 @@ if __name__ == "__main__":
     # Extract command-line arguments
     lora_path = sys.argv[1]
     merged_model_path = sys.argv[2]
-    
+
     # Load the model and merge it with lora adapter
-    model = AutoModelForCausalLM.from_pretrained("Open-Orca/Mistral-7B-OpenOrca", use_cache=True, torch_dtype=torch.float16).to("cuda")
+    model = AutoModelForCausalLM.from_pretrained(
+        "Open-Orca/Mistral-7B-OpenOrca",
+        use_cache=True,
+        torch_dtype=torch.float16,
+    ).to("cuda")
     lora_model = PeftModel.from_pretrained(model, lora_path)
     lora_model = lora_model.merge_and_unload()
-    
+
     # Save merged model for the vLLM inference
     lora_model.save_pretrained(merged_model_path)
-    
-    
