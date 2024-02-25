@@ -47,3 +47,10 @@ There are several python scripts. We divided them for the usage convenience, sin
    bash run_3e5.sh
    ```
    Change this file, as you need. Set the paths to the data. You can also find there various hyperparameters.
+
+### 4. Ensemble (average) the predictions
+
+1. At the end you might want to average predictions of 2 model. It's fine, use this command:
+   ```
+   python3 average_ens.py input_file1.jsonl input_file2.jsonl output_file.jsonl
+   ```
