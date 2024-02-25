@@ -5,6 +5,7 @@ import numpy as np
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from transformers import TrainingArguments
+import sys
 
 
 def create_answer(example):
