@@ -6,17 +6,19 @@ from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 from transformers import TrainingArguments
 
+
 def create_answer(example):
     text = example["text"]
     label = example["label"]
-    
+
     words = text.split(" ")
-    answer = ' '.join(words[label:])
-    
+    answer = " ".join(words[label:])
+
     if label == len(words) - 1:
         answer = "None"
-    
+
     return {"answer": answer}
+
 
 def create_instruct(example):
     chat = [
@@ -33,6 +35,7 @@ def create_instruct(example):
 
     return {"prompt_text": chat}
 
+
 if __name__ == "__main__":
     # Check if all command-line arguments are provided
     if len(sys.argv) != 3:
@@ -42,27 +45,39 @@ if __name__ == "__main__":
     # Extract command-line arguments
     input_file = sys.argv[1]
     output_dir = sys.argv[2]
-    
-    train_dataset = load_dataset('json', data_files=input_file, split='train', num_proc=16)
+
+    train_dataset = load_dataset(
+        "json", data_files=input_file, split="train", num_proc=16
+    )
     train_dataset = train_dataset.map(create_answer, num_proc=16)
     train_dataset = train_dataset.map(create_instruct, num_proc=16)
-    
+
     # Create a model and a tokenizer
-    model = AutoModelForCausalLM.from_pretrained("Open-Orca/Mistral-7B-OpenOrca", use_cache=False).to("cuda")
+    model = AutoModelForCausalLM.from_pretrained(
+        "Open-Orca/Mistral-7B-OpenOrca", use_cache=False
+    ).to("cuda")
     tokenizer = AutoTokenizer.from_pretrained(
-    "Open-Orca/Mistral-7B-OpenOrca",
-    padding_side="left",
-    add_eos_token=True,
-    add_bos_token=True,
+        "Open-Orca/Mistral-7B-OpenOrca",
+        padding_side="left",
+        add_eos_token=True,
+        add_bos_token=True,
     )
     tokenizer.pad_token = "<PAD>"
-    
-    train_dataset = train_dataset.map(lambda x: {"prompt_chat": tokenizer.apply_chat_template(x["prompt_text"], tokenize=False, add_generation_prompt=False)})
-    
+
+    train_dataset = train_dataset.map(
+        lambda x: {
+            "prompt_chat": tokenizer.apply_chat_template(
+                x["prompt_text"], tokenize=False, add_generation_prompt=False
+            )
+        }
+    )
+
     # Create a datacollactor
     response_template = "<|im_start|>assistant\n"
-    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
-    
+    collator = DataCollatorForCompletionOnlyLM(
+        response_template, tokenizer=tokenizer
+    )
+
     args = TrainingArguments(
         output_dir=output_dir,
         num_train_epochs=5,
@@ -76,7 +91,7 @@ if __name__ == "__main__":
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
     )
-    
+
     peft_config = LoraConfig(
         r=32,
         lora_alpha=64,
@@ -94,7 +109,7 @@ if __name__ == "__main__":
         lora_dropout=0.05,
         task_type="CAUSAL_LM",
     )
-    
+
     trainer = SFTTrainer(
         model,
         peft_config=peft_config,
@@ -106,6 +121,5 @@ if __name__ == "__main__":
         packing=False,
         args=args,
     )
-    
-    trainer.train()
 
+    trainer.train()
