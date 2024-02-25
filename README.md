@@ -1,4 +1,4 @@
-# <img src='aipom.png' width='71'>  AIpom at SemEval-2024 Task:8
+# <img src='aipom.png' width='75'>  AIpom at SemEval-2024 Task:8
 
 There are several python scripts. We divided them for the usage convenience, since one might want to run separately some parts of the pipeline. For example, training only a LLM instead of training both models. We write commands with example arguments; paths and file names can and should be changed to your own.
 
