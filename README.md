@@ -2,9 +2,15 @@
 
 There are several python scripts. We divided them for the usage convenience, since one might want to run separately some parts of the pipeline. For example, training only a LLM instead of training both models.
 
+## Pipeline:
+1. Divide the dataset on 2 folds.
+2. Train a LLM on the 1 fold, label (run the inference) the 2 fold. Repeat the procedure with the other one.
+3. Train the LLM on the whole train data, label the test (run the inference).
+4. Train the decoder on the labeled train. Run the inference on the labeled test.
+
 ## Usage instruction:
 
-### 1. LLM train
+### 1. LLM training
 0. Upload the data (in JSONL format) into the data folder.
 1. You need to divide the dataset into 2 folds to separately train 2 LLM models and label the train data without overfitting. Use:
   ```
@@ -27,9 +33,17 @@ There are several python scripts. We divided them for the usage convenience, sin
    ```
    python3 vllm_inference.py dataset_path.jsonl output_predictions_path.csv model_checkpoint_path
    ```
-3. After the inference one needs to postprocess the predictions to get the labels. Also if you want to train the decoder models on texts with predictions, you also should use this script.
+3. After the inference one needs to postprocess the predictions to get the labels, since LLM outputs texts. Also if you want to train the decoder models on texts with predictions, you also should use this script.
 
    ```
    python3 postprocess_llm.py input_file.jsonl llm_preds_path.csv output_train_file.jsonl output_predictions.jsonl test_mode
    ```
-   This script will save the predictions of the LLM in the JSONL format, so you can use them to check the results. It also saves the file with inserted predictions into the original texts. If you run this script on the test_dataset without labels, please pass "test" as the last argument, otherwise pass "train".
+   This script will save the predictions of the LLM in the JSONL format (output_predictions.jsonl), so you can use them to check the results. It also saves the file with inserted predictions into the original texts (output_train_file.jsonl). If you run this script on the test_dataset without labels, please pass "test" as the last argument, otherwise pass "train".
+
+### 3. Decoder training and inference
+
+1. To train the decoder or to run the inderence procedure, please use:
+   ```
+   bash run_3e5.sh
+   ```
+   Change this file, as you need. Set the paths to the data. You can also find there various hyperparameters.
