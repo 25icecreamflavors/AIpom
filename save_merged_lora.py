@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
+from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model, PeftModel
 import sys
 import torch
 
