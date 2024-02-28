@@ -1,6 +1,7 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import LoraConfig, prepare_model_for_kbit_training, get_peft_model
 import sys
+import torch
 
 if __name__ == "__main__":
     # Check if all command-line arguments are provided
