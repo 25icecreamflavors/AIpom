@@ -115,9 +115,9 @@ if __name__ == "__main__":
     # Adding <break> inside the original text for the decoder
     df["text_deberta"] = df.apply(add_break, axis=1)
 
-    if test_mode == "train":
+    if test_mode != "test":
         # Saving the JSON file to train the decoder
-        df_json = df[["id", "label", "text_deberta"]]
+        df_json = df[["id", "label_predicted", "text_deberta"]]
         df_json = df_json.rename(columns={"text_deberta": "text"})
         df_json[["id", "text", "label"]].to_json(
             output_train_jsonl, orient="records", lines=True
