@@ -1,0 +1,19 @@
+# Configuration for the experiment pipeline
+
+# --- General Paths ---
+train_data_path: "data/subtaskC_train.jsonl"
+test_data_path: "data/subtaskC_dev.jsonl"
+
+# --- LLM Training Parameters ---
+llm_params:
+  model_name: "Open-Orca/Mistral-7B-OpenOrca"
+  learning_rate: 2e-5
+  num_epochs: 5
+
+# --- DeBERTa Training Parameters ---
+deberta_params:
+  model_path: "microsoft/deberta-v3-large"
+  learning_rate: 3e-5
+  num_epochs: 6
+  train_batch_size: 8
+  eval_batch_size: 8

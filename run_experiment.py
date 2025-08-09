@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+import yaml
 
 def run_command(command):
     """Runs a command and prints its output."""
@@ -14,16 +15,19 @@ def run_command(command):
 
 def main():
     parser = argparse.ArgumentParser(description="Run the full experiment pipeline.")
-    parser.add_argument("--llm_model_name", type=str, default="Open-Orca/Mistral-7B-OpenOrca", help="The name of the LLM model to use.")
-    parser.add_argument("--learning_rate", type=float, default=2e-5, help="The learning rate for LLM training.")
-    parser.add_argument("--num_epochs", type=int, default=5, help="The number of epochs for LLM training.")
-    parser.add_argument("--train_data_path", type=str, required=True, help="The path to the training data.")
-    parser.add_argument("--test_data_path", type=str, required=True, help="The path to the test data.")
-
+    parser.add_argument("--config", type=str, required=True, help="Path to the YAML config file.")
     args = parser.parse_args()
 
+    with open(args.config, 'r') as f:
+        config = yaml.safe_load(f)
+
+    llm_params = config['llm_params']
+    deberta_params = config['deberta_params']
+    train_data_path = config['train_data_path']
+    test_data_path = config['test_data_path']
+
     # Create a unique experiment directory
-    exp_name = f"experiment_{args.llm_model_name.replace('/', '_')}_lr{args.learning_rate}_epochs{args.num_epochs}"
+    exp_name = f"experiment_{llm_params['model_name'].replace('/', '_')}_lr{llm_params['learning_rate']}_epochs{llm_params['num_epochs']}"
     exp_dir = os.path.join("experiments", exp_name)
     os.makedirs(exp_dir, exist_ok=True)
 
@@ -33,19 +37,22 @@ def main():
     deberta_training_dir = os.path.join(exp_dir, "deberta_training")
     os.makedirs(deberta_training_dir, exist_ok=True)
 
+    results_dir = os.path.join(exp_dir, "results")
+    os.makedirs(results_dir, exist_ok=True)
+
     print(f"Experiment directory created: {exp_dir}")
 
     # --- 1. Divide dataset ---
     print("\n--- Step 1: Dividing dataset ---")
     fold1_path = os.path.join(llm_training_dir, "train_fold1.jsonl")
     fold2_path = os.path.join(llm_training_dir, "train_fold2.jsonl")
-    run_command(["python", "divide_dataset.py", args.train_data_path, fold1_path, fold2_path])
+    run_command(["python", "divide_dataset.py", train_data_path, fold1_path, fold2_path])
     print("Dataset divided successfully.")
 
     # --- 2. LLM Training and Inference on Folds ---
     print("\n--- Step 2: LLM Training and Inference on Folds ---")
 
-    def train_and_infer_llm(train_fold_path, infer_fold_path, output_dir_name, args):
+    def train_and_infer_llm(train_fold_path, infer_fold_path, output_dir_name, llm_params):
         fold_dir = os.path.join(llm_training_dir, output_dir_name)
         os.makedirs(fold_dir, exist_ok=True)
 
@@ -56,8 +63,8 @@ def main():
             "python", "llm_tuning_secondhalf.py",
             train_fold_path,
             model_output_dir,
-            str(args.learning_rate),
-            str(args.num_epochs)
+            str(llm_params['learning_rate']),
+            str(llm_params['num_epochs'])
         ])
         print("LLM training complete.")
 
@@ -97,8 +104,8 @@ def main():
         print("Postprocessing complete.")
         return labeled_infer_fold_path
 
-    labeled_fold2_path = train_and_infer_llm(fold1_path, fold2_path, "fold1_on_fold2", args)
-    labeled_fold1_path = train_and_infer_llm(fold2_path, fold1_path, "fold2_on_fold1", args)
+    labeled_fold2_path = train_and_infer_llm(fold1_path, fold2_path, "fold1_on_fold2", llm_params)
+    labeled_fold1_path = train_and_infer_llm(fold2_path, fold1_path, "fold2_on_fold1", llm_params)
 
     # --- 3. Merge labeled folds ---
     print("\n--- Step 3: Merging labeled folds ---")
@@ -112,21 +119,22 @@ def main():
 
     # --- 4. Train DeBERTa on LLM-labeled data ---
     print("\n--- Step 4: Training DeBERTa model ---")
-    deberta_output_dir = os.path.join(deberta_training_dir, "model")
+    deberta_exp_name = f"deberta_lr{deberta_params['learning_rate']}_epochs{deberta_params['num_epochs']}"
+    deberta_output_dir = os.path.join(deberta_training_dir, deberta_exp_name)
     run_command([
         "python", "transformer_baseline.py",
-        "--model_path", "microsoft/deberta-v3-large",
+        "--model_path", deberta_params['model_path'],
         "--train_file", merged_labeled_train_path,
         "--dev_file", merged_labeled_train_path, # Using merged train as dev for simplicity
         "--do_train",
         "--do_predict",
         "--output_dir", deberta_output_dir,
         "--logging_dir", os.path.join(deberta_output_dir, "logs"),
-        "--num_train_epochs", "6",
-        "--per_device_train_batch_size", "8",
-        "--per_device_eval_batch_size", "8",
-        "--learning_rate", "3e-5",
-        "--test_files", args.test_data_path
+        "--num_train_epochs", str(deberta_params['num_epochs']),
+        "--per_device_train_batch_size", str(deberta_params['train_batch_size']),
+        "--per_device_eval_batch_size", str(deberta_params['eval_batch_size']),
+        "--learning_rate", str(deberta_params['learning_rate']),
+        "--test_files", test_data_path
     ])
     print("DeBERTa training and prediction complete.")
 
@@ -140,10 +148,10 @@ def main():
     final_model_output_dir = os.path.join(final_llm_dir, "adapter")
     run_command([
         "python", "llm_tuning_secondhalf.py",
-        args.train_data_path,
+        train_data_path,
         final_model_output_dir,
-        str(args.learning_rate),
-        str(args.num_epochs)
+        str(llm_params['learning_rate']),
+        str(llm_params['num_epochs'])
     ])
     print("Final LLM training complete.")
 
@@ -161,7 +169,7 @@ def main():
     test_predictions_csv_path = os.path.join(final_llm_dir, "test_predictions.csv")
     run_command([
         "python", "vllm_inference.py",
-        args.test_data_path,
+        test_data_path,
         test_predictions_csv_path,
         final_merged_model_dir
     ])
@@ -170,16 +178,22 @@ def main():
     # Postprocess test predictions
     print("Postprocessing test predictions...")
     labeled_test_path = os.path.join(final_llm_dir, "labeled_test.jsonl")
-    final_llm_predictions_path = os.path.join(final_llm_dir, "llm_predictions_test.jsonl")
+    final_llm_predictions_path = os.path.join(results_dir, f"llm_preds_lr{llm_params['learning_rate']}_epochs{llm_params['num_epochs']}.jsonl")
     run_command([
         "python", "postprocess_llm.py",
-        args.test_data_path,
+        test_data_path,
         test_predictions_csv_path,
         labeled_test_path,
         final_llm_predictions_path,
         "test"
     ])
     print("Postprocessing of test predictions complete.")
+
+    # Move deberta predictions to results folder
+    deberta_preds_source = os.path.join(deberta_output_dir, "predictions", os.path.basename(test_data_path))
+    deberta_preds_dest = os.path.join(results_dir, f"deberta_preds_lr{deberta_params['learning_rate']}_epochs{deberta_params['num_epochs']}.jsonl")
+    os.rename(deberta_preds_source, deberta_preds_dest)
+    print(f"DeBERTa predictions moved to {deberta_preds_dest}")
 
 
 if __name__ == "__main__":
