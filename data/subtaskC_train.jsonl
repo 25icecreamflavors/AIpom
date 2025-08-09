@@ -1,0 +1,4 @@
+{"id": "1", "text": "This is a human-written text.", "label": 0}
+{"id": "2", "text": "This is another human-written text.", "label": 0}
+{"id": "3", "text": "This is a machine-generated text.", "label": 1}
+{"id": "4", "text": "This is another machine-generated text.", "label": 1}

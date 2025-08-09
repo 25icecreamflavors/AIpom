@@ -39,13 +39,15 @@ def create_instruct(example):
 
 if __name__ == "__main__":
     # Check if all command-line arguments are provided
-    if len(sys.argv) != 3:
-        print("Usage: python script.py input_file.jsonl output_dir")
+    if len(sys.argv) != 5:
+        print("Usage: python script.py input_file.jsonl output_dir learning_rate num_train_epochs")
         sys.exit(1)
 
     # Extract command-line arguments
     input_file = sys.argv[1]
     output_dir = sys.argv[2]
+    learning_rate = float(sys.argv[3])
+    num_train_epochs = int(sys.argv[4])
 
     train_dataset = load_dataset(
         "json", data_files=input_file, split="train", num_proc=16
@@ -81,13 +83,13 @@ if __name__ == "__main__":
 
     args = TrainingArguments(
         output_dir=output_dir,
-        num_train_epochs=5,
+        num_train_epochs=num_train_epochs,
         per_device_train_batch_size=4,
         # gradient_accumulation_steps=2,
         gradient_checkpointing=True,
         logging_steps=20,
         save_strategy="epoch",
-        learning_rate=2e-5,
+        learning_rate=learning_rate,
         max_grad_norm=0.3,
         warmup_ratio=0.03,
         lr_scheduler_type="cosine",
