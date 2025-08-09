@@ -4,6 +4,9 @@
 train_data_path: "data/subtaskC_train.jsonl"
 test_data_path: "data/subtaskC_dev.jsonl"
 
+# --- General Settings ---
+skip_llm_training: false
+
 # --- LLM Training Parameters ---
 llm_params:
   model_name: "Open-Orca/Mistral-7B-OpenOrca"
