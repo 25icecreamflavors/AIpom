@@ -102,11 +102,11 @@ if __name__ == "__main__":
     test_mode = sys.argv[5]
 
     # load original texts to merge them
-    test_dataset = load_dataset("json", data_files=input_file, split="train")
+    test_dataset = load_from_disk(input_file)
 
     # load a file with llm predictions
     df = pd.read_csv(llm_preds_path)
-    df["text"] = pd.DataFrame(test_dataset["text"])
+    df["text"] = test_dataset["text"]
 
     # Postprocessing step
     df["postprocessed"] = df.apply(post_process, axis=1)
@@ -115,23 +115,23 @@ if __name__ == "__main__":
     # Adding <break> inside the original text for the decoder
     df["text_deberta"] = df.apply(add_break, axis=1)
 
+    from datasets import Dataset
+    # Create a new dataset with the required columns
     if test_mode != "test":
-        # Saving the JSON file to train the decoder
-        df_json = df[["id", "label_predicted", "text_deberta"]]
-        df_json = df_json.rename(columns={"text_deberta": "text"})
-        df_json[["id", "text", "label"]].to_json(
-            output_train_jsonl, orient="records", lines=True
-        )
+        # Create a dataset for the decoder training
+        decoder_dataset = Dataset.from_dict({
+            "id": df["id"],
+            "text": df["text_deberta"],
+            "label": df["label_predicted"]
+        })
+        decoder_dataset.save_to_disk(output_train_jsonl)
     else:
-        # Saving the JSON file for the decoder inference
-        df_json = df[["id", "text_deberta"]]
-        df_json = df_json.rename(columns={"text_deberta": "text"})
-        df_json[
-            [
-                "id",
-                "text",
-            ]
-        ].to_json(output_train_jsonl, orient="records", lines=True)
+        # Create a dataset for the decoder inference
+        decoder_dataset = Dataset.from_dict({
+            "id": df["id"],
+            "text": df["text_deberta"]
+        })
+        decoder_dataset.save_to_disk(output_train_jsonl)
 
     # Save predictions of LLM to check them etc
     sub = df[["id", "label_predicted"]]

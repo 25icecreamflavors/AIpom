@@ -35,12 +35,7 @@ if __name__ == "__main__":
     sampling_params = SamplingParams(temperature=1, top_p=1, max_tokens=1024)
 
     # Loading data
-    test_dataset = load_dataset(
-        "json",
-        data_files=input_file,
-        split="train",
-        num_proc=16,
-    )
+    test_dataset = load_from_disk(input_file)
     tokenizer = AutoTokenizer.from_pretrained(
         "Open-Orca/Mistral-7B-OpenOrca",
         padding_side="left",

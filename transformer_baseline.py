@@ -50,12 +50,13 @@ class TrainingArgsConfig(transformers.TrainingArguments):
     save_total_limit: int = 2
 
 
+from datasets import load_from_disk
+
 class Semeval_Data(torch.utils.data.Dataset):
     def __init__(
         self, data_path, max_length=1024, inference=False, debug=False
     ):
-        with open(data_path, "r") as f:
-            self.data = [json.loads(line) for line in f]
+        self.data = load_from_disk(data_path)
         self.inference = inference
         self.tokenizer = AutoTokenizer.from_pretrained(
             "microsoft/deberta-v3-large"

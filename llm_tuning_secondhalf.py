@@ -49,9 +49,7 @@ if __name__ == "__main__":
     learning_rate = float(sys.argv[3])
     num_train_epochs = int(sys.argv[4])
 
-    train_dataset = load_dataset(
-        "json", data_files=input_file, split="train", num_proc=16
-    )
+    train_dataset = load_from_disk(input_file)
     train_dataset = train_dataset.map(create_answer, num_proc=16)
     train_dataset = train_dataset.map(create_instruct, num_proc=16)
 

@@ -2,6 +2,7 @@ import argparse
 import os
 import subprocess
 import yaml
+from datasets import load_dataset, load_from_disk, concatenate_datasets
 
 def run_command(command):
     """Runs a command and prints its output."""
@@ -43,14 +44,31 @@ def main():
 
     print(f"Experiment directory created: {exp_dir}")
 
-    merged_labeled_train_path = os.path.join(llm_training_dir, "labeled_train_full.jsonl")
+    # --- Initial Data Conversion ---
+    print("\n--- Step 0: Converting data to Hugging Face format ---")
+    hf_data_dir = os.path.join(exp_dir, "hf_data")
+    os.makedirs(hf_data_dir, exist_ok=True)
+
+    train_hf_path = os.path.join(hf_data_dir, "train")
+    test_hf_path = os.path.join(hf_data_dir, "test")
+
+    if not os.path.exists(train_hf_path):
+        train_dataset = load_dataset('json', data_files=train_data_path, split='train')
+        train_dataset.save_to_disk(train_hf_path)
+
+    if not os.path.exists(test_hf_path):
+        test_dataset = load_dataset('json', data_files=test_data_path, split='train')
+        test_dataset.save_to_disk(test_hf_path)
+    print("Data converted and saved in Hugging Face format.")
+
+    merged_labeled_train_path = os.path.join(llm_training_dir, "labeled_train_full_hf")
 
     if not skip_llm_training:
         # --- 1. Divide dataset ---
         print("\n--- Step 1: Dividing dataset ---")
-        fold1_path = os.path.join(llm_training_dir, "train_fold1.jsonl")
-        fold2_path = os.path.join(llm_training_dir, "train_fold2.jsonl")
-        run_command(["python", "divide_dataset.py", train_data_path, fold1_path, fold2_path])
+        fold1_path = os.path.join(llm_training_dir, "train_fold1_hf")
+        fold2_path = os.path.join(llm_training_dir, "train_fold2_hf")
+        run_command(["python", "divide_dataset.py", train_hf_path, fold1_path, fold2_path])
         print("Dataset divided successfully.")
 
         # --- 2. LLM Training and Inference on Folds ---
@@ -95,7 +113,7 @@ def main():
 
             # Postprocess predictions
             print("Postprocessing predictions...")
-            labeled_infer_fold_path = os.path.join(fold_dir, "labeled_infer_fold.jsonl")
+            labeled_infer_fold_path = os.path.join(fold_dir, "labeled_infer_fold_hf")
             llm_predictions_path = os.path.join(fold_dir, "llm_predictions.jsonl")
             run_command([
                 "python", "postprocess_llm.py",
@@ -113,11 +131,10 @@ def main():
 
         # --- 3. Merge labeled folds ---
         print("\n--- Step 3: Merging labeled folds ---")
-        with open(merged_labeled_train_path, "w") as outfile:
-            for fname in [labeled_fold1_path, labeled_fold2_path]:
-                with open(fname) as infile:
-                    for line in infile:
-                        outfile.write(line)
+        dataset1 = load_from_disk(labeled_fold1_path)
+        dataset2 = load_from_disk(labeled_fold2_path)
+        merged_dataset = concatenate_datasets([dataset1, dataset2])
+        merged_dataset.save_to_disk(merged_labeled_train_path)
         print("Labeled folds merged successfully.")
 
         # --- 5. Train final LLM and predict on test ---
@@ -130,7 +147,7 @@ def main():
         final_model_output_dir = os.path.join(final_llm_dir, "adapter")
         run_command([
             "python", "llm_tuning_secondhalf.py",
-            train_data_path,
+            train_hf_path,
             final_model_output_dir,
             str(llm_params['learning_rate']),
             str(llm_params['num_epochs'])
@@ -151,7 +168,7 @@ def main():
         test_predictions_csv_path = os.path.join(final_llm_dir, "test_predictions.csv")
         run_command([
             "python", "vllm_inference.py",
-            test_data_path,
+            test_hf_path,
             test_predictions_csv_path,
             final_merged_model_dir
         ])
@@ -159,11 +176,11 @@ def main():
 
         # Postprocess test predictions
         print("Postprocessing test predictions...")
-        labeled_test_path = os.path.join(final_llm_dir, "labeled_test.jsonl")
+        labeled_test_path = os.path.join(final_llm_dir, "labeled_test_hf")
         final_llm_predictions_path = os.path.join(results_dir, f"llm_preds_lr{llm_params['learning_rate']}_epochs{llm_params['num_epochs']}.jsonl")
         run_command([
             "python", "postprocess_llm.py",
-            test_data_path,
+            test_hf_path,
             test_predictions_csv_path,
             labeled_test_path,
             final_llm_predictions_path,
@@ -193,12 +210,12 @@ def main():
         "--per_device_train_batch_size", str(deberta_params['train_batch_size']),
         "--per_device_eval_batch_size", str(deberta_params['eval_batch_size']),
         "--learning_rate", str(deberta_params['learning_rate']),
-        "--test_files", test_data_path
+        "--test_files", test_hf_path
     ])
     print("DeBERTa training and prediction complete.")
 
     # Move deberta predictions to results folder
-    deberta_preds_source = os.path.join(deberta_output_dir, "predictions", os.path.basename(test_data_path))
+    deberta_preds_source = os.path.join(deberta_output_dir, "predictions", "test") # The file will be named 'test'
     deberta_preds_dest = os.path.join(results_dir, f"deberta_preds_lr{deberta_params['learning_rate']}_epochs{deberta_params['num_epochs']}.jsonl")
     os.rename(deberta_preds_source, deberta_preds_dest)
     print(f"DeBERTa predictions moved to {deberta_preds_dest}")
