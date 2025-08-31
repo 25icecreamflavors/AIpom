@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     # Load the model and merge it with lora adapter
     model = AutoModelForCausalLM.from_pretrained(
-        "Open-Orca/Mistral-7B-OpenOrca",
+        "/home/dviazhev/deepseek-llm-7b-chat",
         use_cache=True,
         torch_dtype=torch.float16,
     ).to("cuda")
