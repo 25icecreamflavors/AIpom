@@ -44,11 +44,12 @@ class TrainingArgsConfig(transformers.TrainingArguments):
     auto_find_batch_size: bool = True
     logging_dir: str = "./runs/exp_3/logs"
     logging_steps: int = 10
-    load_best_model_at_end: bool = True
+    load_best_model_at_end: bool = False   # <- временно False, чтобы парсер не падал
     evaluation_strategy: str = "epoch"
     save_strategy: str = "epoch"
     save_total_limit: int = 2
-
+    metric_for_best_model: Optional[str] = "mean_absolute_diff"
+    greater_is_better: Optional[bool] = False
 
 from datasets import load_from_disk
 
@@ -277,6 +278,10 @@ def compute_metrics(p):
 
 
 if __name__ == "__main__":
+    import sys, logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info("sys.argv at entry: %s", sys.argv)
     parser = transformers.HfArgumentParser(
         (ModelConfig, DatasetConfig, TrainingArgsConfig)
     )
@@ -284,6 +289,26 @@ if __name__ == "__main__":
     print("Model Arguments: ", model_args)
     print("Data Arguments: ", data_args)
     print("Training Arguments: ", training_args)
+    
+    # Print to check
+    logger.info("sys.argv: %s", sys.argv)
+    logger.info("Parsed training_args summary: evaluation_strategy=%s save_strategy=%s load_best_model_at_end=%s do_eval=%s",
+                getattr(training_args, "evaluation_strategy", None),
+                getattr(training_args, "save_strategy", None),
+                getattr(training_args, "load_best_model_at_end", None),
+                getattr(training_args, "do_eval", None))
+
+    if getattr(training_args, "load_best_model_at_end", False):
+        ev = str(getattr(training_args, "evaluation_strategy", "no")).lower()
+        sv = str(getattr(training_args, "save_strategy", "")).lower()
+        if ev in ("no", "none", "", "false") and sv:
+            logger.warning("evaluation_strategy == '%s' while load_best_model_at_end=True; forcing evaluation_strategy = save_strategy ('%s')",
+                           ev, sv)
+            training_args.evaluation_strategy = training_args.save_strategy
+
+    if getattr(training_args, "metric_for_best_model", None) and getattr(training_args, "greater_is_better", None) is None:
+        if training_args.metric_for_best_model == "mean_absolute_diff":
+            training_args.greater_is_better = False
 
     # Set seed
     transformers.set_seed(training_args.seed)

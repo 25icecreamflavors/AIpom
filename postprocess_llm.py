@@ -1,7 +1,6 @@
 import pandas as pd
-from datasets import load_dataset
+from datasets import load_from_disk, Dataset, concatenate_datasets
 import sys
-
 
 def find_start_index(list_A, common_sublist):
     # Join the words in list_A to form a space-separated string
@@ -22,7 +21,6 @@ def find_start_index(list_A, common_sublist):
         return len(words_before_start) - 1
     else:
         return len(words_before_start)
-
 
 def longest_common_sublist(list_A, list_B):
     m, n = len(list_A), len(list_B)
@@ -47,39 +45,43 @@ def longest_common_sublist(list_A, list_B):
 
 
 def post_process(row):
-    original_text = row["text"].lower().split(" ")
-    prediction_text = row["prediction_text"].lower().split(" ")
+    pred_raw = row.get("prediction_text", "")
+    if pd.isna(pred_raw):
+        pred_raw = ""
+    pred = str(pred_raw).lower()
 
-    if (
-        row["prediction_text"].find("Answer:") == -1
-        and row["prediction_text"].find("answer:") == -1
-    ):
+    if "answer:" not in pred:
         return "none"
+
+    original_text = str(row.get("text", "")).lower().split()   # split() лучше чем split(" ")
+    prediction_text = pred.split()
 
     sublist, _ = longest_common_sublist(original_text, prediction_text)
 
+    if not sublist:
+        return "none"
     return sublist
-
 
 def get_label(row):
     if row["postprocessed"] == "none":
-        return 0
-
-    label = find_start_index(
-        row["text"].lower().split(" "), row["postprocessed"]
-    )
-
+        return -1   
+    text_words = str(row["text"]).lower().split()
+    label = find_start_index(text_words, row["postprocessed"])
     return label
 
-
 def add_break(row):
-    text = row["text"]
-    label = row["label_predicted"]
-    text_words = text.split(" ")
+    text = str(row.get("text", ""))
+    label = row.get("label_predicted", None)
 
-    if label == -1:
+    try:
+        label = int(label)
+    except (TypeError, ValueError):
         return text
-    if label >= len(text_words):
+
+    text_words = text.split()
+    if label == 0:
+        return text
+    if label < 0 or label >= len(text_words):
         return text
 
     text_words[label] = "<BREAK>" + text_words[label]
@@ -90,52 +92,66 @@ if __name__ == "__main__":
     # Check if all command-line arguments are provided
     if len(sys.argv) != 6:
         print(
-            "Usage: python script.py input_file.jsonl llm_preds.csv output_train.jsonl output_path.jsonl test_mode"
+            "Usage: python script.py input_hf_dataset_path llm_preds.csv output_hf_dataset_path output_preds_path.jsonl test_mode"
         )
         sys.exit(1)
 
     # Extract command-line arguments
-    input_file = sys.argv[1]
+    input_file_path = sys.argv[1]
     llm_preds_path = sys.argv[2]
-    output_train_jsonl = sys.argv[3]
-    output_path_jsonl = sys.argv[4]
+    output_train_path = sys.argv[3]
+    output_preds_path = sys.argv[4]
     test_mode = sys.argv[5]
 
-    # load original texts to merge them
-    test_dataset = load_from_disk(input_file)
+    # Load original dataset from disk
+    original_dataset = load_from_disk(input_file_path)
 
-    # load a file with llm predictions
+    # Load a file with llm predictions
     df = pd.read_csv(llm_preds_path)
-    df["text"] = test_dataset["text"]
-
-    # Postprocessing step
+    df["text"] = original_dataset["text"]
+    
+    # Postprocessing step to get the LLM's predicted label
     df["postprocessed"] = df.apply(post_process, axis=1)
     df["label_predicted"] = df.apply(get_label, axis=1)
 
-    # Adding <break> inside the original text for the decoder
+    # Adding <BREAK> inside the original text for the decoder, based on LLM's prediction
     df["text_deberta"] = df.apply(add_break, axis=1)
-
-    from datasets import Dataset
-    # Create a new dataset with the required columns
-    if test_mode != "test":
-        # Create a dataset for the decoder training
-        decoder_dataset = Dataset.from_dict({
-            "id": df["id"],
-            "text": df["text_deberta"],
-            "label": df["label_predicted"]
-        })
-        decoder_dataset.save_to_disk(output_train_jsonl)
-    else:
-        # Create a dataset for the decoder inference
-        decoder_dataset = Dataset.from_dict({
-            "id": df["id"],
-            "text": df["text_deberta"]
-        })
-        decoder_dataset.save_to_disk(output_train_jsonl)
 
     # Save predictions of LLM to check them etc
     sub = df[["id", "label_predicted"]]
     sub = sub.rename(columns={"label_predicted": "label"})
     sub[["id", "label"]].to_json(
-        output_path_jsonl, orient="records", lines=True
+        output_preds_path, orient="records", lines=True
     )
+
+    # Create datasets for DeBERTa training/inference
+    if test_mode != "test":
+        # In train/dev mode, we expect a 'label' column.
+        if 'label' not in original_dataset.column_names:
+            raise ValueError(f"Input dataset for train mode must contain a 'label' column, but not found in {input_file_path}")
+        
+        df["original_label"] = original_dataset["label"]
+
+        # Create Augmented Dataset 
+        augmented_dataset = Dataset.from_dict({
+            "id": df["id"],
+            "text": df["text_deberta"],
+            "label": df["original_label"] # Use original label
+        })
+        
+        # --- Create Original Dataset (for augmentation) ---
+        original_dataset_for_concat = original_dataset.select_columns(["id", "text", "label"])
+
+        # --- Concatenate for Data Augmentation ---
+        # The final training data for DeBERTa is the combination of original texts and augmented texts
+        final_decoder_dataset = concatenate_datasets([original_dataset_for_concat, augmented_dataset])
+        final_decoder_dataset.save_to_disk(output_train_path)
+
+    else:
+        # For test mode, we only need the augmented text for inference.
+        # No labels are used or expected.
+        decoder_dataset_inference = Dataset.from_dict({
+            "id": df["id"],
+            "text": df["text_deberta"]
+        })
+        decoder_dataset_inference.save_to_disk(output_train_path)

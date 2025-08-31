@@ -1,0 +1,24 @@
+# Configuration for the experiment pipeline
+
+# --- General Paths ---
+train_data_path: "/home/dviazhev/AIpom/data/subtaskC_train.jsonl"
+test_data_path: "/home/dviazhev/AIpom/data/subtaskC_dev.jsonl"
+dev_data_path: "/home/dviazhev/AIpom/data/subtaskC_dev.jsonl"
+
+
+# --- General Settings ---
+skip_llm_training: false
+
+# --- LLM Training Parameters ---
+llm_params:
+  model_name: "/home/dviazhev/deepseek-llm-7b-chat"
+  learning_rate: 2e-5
+  num_epochs: 5
+
+# --- DeBERTa Training Parameters ---
+deberta_params:
+  model_path: "/home/dviazhev/deberta-v3-large"
+  learning_rate: 3e-5
+  num_epochs: 6
+  train_batch_size: 8
+  eval_batch_size: 8

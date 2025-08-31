@@ -208,17 +208,43 @@ def main():
         if not os.path.exists(merged_labeled_train_path) or not os.path.exists(labeled_dev_path_hf):
             raise FileNotFoundError(f"LLM training was skipped, but required labeled files were not found. Please run the full pipeline first or place the files manually.")
 
-    # --- 4. Train DeBERTa on LLM-labeled data ---
+    def dedupe_cli_args(args):
+        flag_map = {}
+        pos = []
+        i = 0
+        while i < len(args):
+            a = args[i]
+            if isinstance(a, str) and a.startswith("--"):
+                if i + 1 < len(args) and not args[i+1].startswith("--"):
+                    flag_map[a] = args[i+1]
+                    i += 2
+                else:
+                    flag_map[a] = None
+                    i += 1
+            else:
+                pos.append(a)
+                i += 1
+        out = []
+        out.extend(pos)  # keep program and positional args in front
+        # keep flags in deterministic order (last occurrence wins)
+        for k, v in flag_map.items():
+            out.append(k)
+            if v is not None:
+                out.append(v)
+        return out
+
+    # Train DeBERTa on LLM-labeled data ---
     logging.info("\n--- Step 4: Training DeBERTa model ---")
     deberta_exp_name = f"deberta_lr{deberta_params['learning_rate']}_epochs{deberta_params['num_epochs']}"
     deberta_output_dir = os.path.join(deberta_training_dir, deberta_exp_name)
-    run_command([
+
+    cmd = [
         "python", "transformer_baseline.py",
         "--model_path", deberta_params['model_path'],
         "--train_file", merged_labeled_train_path,
         "--dev_file", labeled_dev_path_hf,
         "--do_train",
-        "--do_eval", # Ensure evaluation is done
+        "--do_eval",
         "--do_predict",
         "--output_dir", deberta_output_dir,
         "--logging_dir", os.path.join(deberta_output_dir, "logs"),
@@ -226,8 +252,19 @@ def main():
         "--per_device_train_batch_size", str(deberta_params['train_batch_size']),
         "--per_device_eval_batch_size", str(deberta_params['eval_batch_size']),
         "--learning_rate", str(deberta_params['learning_rate']),
-        "--test_files", test_hf_path
-    ])
+        "--test_files", test_hf_path,
+
+        # new flags that was incomplete
+        "--evaluation_strategy", "epoch",
+        "--save_strategy", "epoch",
+        "--load_best_model_at_end", "False",
+        "--metric_for_best_model", "mean_absolute_diff",
+        "--greater_is_better", "False",
+    ]
+
+    cmd = dedupe_cli_args(cmd)
+    run_command(cmd)
+
     logging.info("DeBERTa training and prediction complete.")
 
     # Move deberta predictions to results folder
